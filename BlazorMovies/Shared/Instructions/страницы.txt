@@ -1,0 +1,215 @@
+﻿Инструкция как ограничить количество элементов на странице
+1) создать классс в BlazorMovies.Shared.DTOs
+public class PaginationDTO
+    {
+        public int Page { get; set; } = 1;
+        public int RecordsPerPage { get; set; } = 10;
+    }
+2) создать класс и в нем расширяющий метод:
+
+    BlazorMovies.Server.Helpers -> public static class HttpContextExtentions   
+    {
+        public async static Task InsertPaginationParametersInResponse<T>(this HttpContext httpContext,
+            IQueryable<T> queryable, int recordsPerPage)
+        {
+            if(httpContext == null) { throw new ArgumentNullException(nameof(httpContext)); }
+
+            double count = await queryable.CountAsync();
+            double totalAmountPages = Math.Ceiling(count / recordsPerPage);
+            httpContext.Response.Headers.Add("totalAmountPages", totalAmountPages.ToString());
+        }
+    }
+
+3) создать класс и в нем расширяющий метод для общего пользования:
+
+    BlazorMovies.Server.Helpers -> public static class QueryableExtensions
+
+    {
+        //in this method we implementing pagination using EFcore
+        public static IQueryable<T>Paginate<T>(this IQueryable<T>querable, PaginationDTO paginationDTO)
+        {
+            return querable
+                .Skip((paginationDTO.Page - 1) * paginationDTO.RecordsPerPage)//skiping certain ammount of records
+                .Take(paginationDTO.RecordsPerPage);//only want to take certain ammount of records
+        }
+    }
+
+
+4)BlazorMovies.Server.Controllers -> PeopleController
+
+        [HttpGet]
+        public async Task<ActionResult<List<Person>>> Get([FromQuery]PaginationDTO paginationDTO)
+        {
+            var queryable = Dbcontext.People.AsQueryable();
+            await HttpContext.InsertPaginationParametersInResponse(queryable, paginationDTO.RecordsPerPage);
+            return await queryable.Paginate(paginationDTO).ToListAsync();
+        }
+
+5) создать класс в BlazorMovies.Shared.DTOs 
+
+public class PaginatedResponse<T>
+    {
+        public T Response { get; set; }
+        public int TotalAmountPages { get; set; }
+    }
+
+6) BlazorMovies.Client.Helpers -> IHttpServiceExtensionMethod
+
+ public static async Task<PaginatedResponse<T>> GetHelper<T>(this IHttpService httpService, string url,
+            PaginationDTO paginationDTO)
+        {
+            string newURL = "";
+            if (newURL.Contains("?"))
+            {
+                newURL = $"{url}&page={paginationDTO.Page}&recordsPerPage = {paginationDTO.RecordsPerPage}"
+            }
+            else
+            {
+                newURL = $"{url}?page={paginationDTO.Page}&recordsPerPage = {paginationDTO.RecordsPerPage}"
+
+            }
+
+            var httpResponse = await httpService.Get<T>(newURL);
+            if (!httpResponse.Success)
+            {
+                throw new ApplicationException(await httpResponse.GetBody());
+            }
+            var totalAmountPages = int.Parse(httpResponse.HttpResponseMessage.Headers.GetValues("totalAmountPages").FirstOrDefault());
+            var paginatedResponse = new PaginatedResponse<T>
+            {
+                Response = httpResponse.Response,
+                TotalAmountPages = totalAmountPages
+            };
+
+            return paginatedResponse;
+        }
+7) BlazorMovies.Client.Repository ->  class PersonRepository - > GetPeople() ->
+
+    public async Task<PaginatedResponse<List<Person>>> GetPeople(PaginationDTO paginationDTO)
+        {
+            return await httpService.GetHelper<List<Person>>(url, paginationDTO);
+        }
+8) В IPersonRepository изменить GetPeople() : 
+public async Task<PaginatedResponse<List<Person>>> GetPeople(PaginationDTO paginationDTO);
+
+9)в BlazorMovies.Client.Pages.People -> IndexPeople.razor
+ protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var paginatedResponse = await personRepository.GetPeople(paginationDTO);
+            People = paginatedResponse.Response;
+            Console.WriteLine(paginatedResponse.TotalAmountPages);
+        }
+        catch (Exception ex)
+        {
+
+        }
+    }
+    private async Task DeletePerson(int Id)
+    {
+        await personRepository.DeletePerson(Id);
+        var paginatedResponse = await personRepository.GetPeople(paginationDTO);
+        People = paginatedResponse.Response;
+
+    }
+
+10)   <---FRONT-END--->
+
+в  BlazorMovies.Client.Shared -> Pagination.razor
+<h3>Pagination</h3>
+
+<nav aria-label="Page navigation example">
+    <ul class="pagination justify-content-center">
+        @foreach (var link in links)
+        {
+            <li @onclick="@(() => SelectedPageInternal(link))"
+                style="cursor:pointer;"
+                class="page-item @(link.Enabled?null:"disabled") @(link.Active? "active":null)">
+                <span class="page-link" href="#">@link.Text</span>
+            </li>
+        }
+    </ul>
+</nav>
+
+@code
+{
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int TotalAmountPages { get; set; }
+    [Parameter] public int Radius { get; set; } = 3;
+    [Parameter] public EventCallback<int> SelectedPage { get; set; }
+    List<LinkModel> links;
+
+    private async Task SelectedPageInternal(LinkModel link)
+    {
+        if (link.Page == CurrentPage) //if the user clic on
+        {
+            return;
+        }
+
+        if (!link.Enabled) //if set link is not enabled not going to do anything
+        {
+            return;
+        }
+        CurrentPage = link.Page;
+        await SelectedPage.InvokeAsync(link.Page);
+    }
+
+    //method for generating the links
+    private void LoadPages()
+    {
+        links = new List<LinkModel>();
+        var isPreviousPageLinkEnabled = CurrentPage != 1;
+        var previousPage = CurrentPage - 1;
+        links.Add(new LinkModel(previousPage, isPreviousPageLinkEnabled, "Previous"));
+
+        for (int i = 1; i < TotalAmountPages; i++)
+        {
+            if (i >= CurrentPage - Radius && i <= CurrentPage + Radius)
+            {
+                links.Add(new LinkModel(i) { Active = CurrentPage == i });
+            }
+        }
+        var isNextPageLinkEnabled = CurrentPage != TotalAmountPages;
+        var nextPage = CurrentPage + 1;
+        links.Add(new LinkModel(nextPage, isNextPageLinkEnabled, "Next"));
+
+    }
+
+    //this internal class incapsulates all the information related to a specific link
+    class LinkModel
+    {
+        public LinkModel(int page)
+        : this(page, true) { }
+        public LinkModel(int page, bool enabled)
+        : this(page, enabled, page.ToString()) { }
+        public LinkModel(int page, bool enabled, string text)
+        {
+            Page = page;
+            Enabled = enabled;
+            Text = text;
+        }
+
+        public string Text { get; set; }//Displayed text in the bottom f.e.: |Previous| 1 | 2 | 3 | Next|
+        public int Page { get; set; }//the page to witch the button is linking to
+        public bool Enabled { get; set; } = true; // means that the button isn't disabled
+        public bool Active { get; set; } = false;// the current page in witch we are in
+    }
+}
+
+11) в  BlazorMovies.Client.People -> IndexPeople.razor
+
+<Pagination CurrentPage="@paginationDTO.Page" TotalAmountPages="totalAmountPages" 
+            SelectedPage="SelectedPage"/>
+
+private int totalAmountPages;
+
+protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+        totalAmountPages = paginatedResponse.TotalAmountPages;
+        }
+    }
+
+

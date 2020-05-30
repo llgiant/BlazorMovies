@@ -1,0 +1,53 @@
+﻿Инструкция удалениея из баз данных через EntityFrameworkCore (на примере жанра тоже самое и с people)
+1) в интерфейсе BlazorMovies.Client.Repository IGenreRepository:
+	Task DeleteGenre (int Id);
+2)в BlazorMovies.Client.Repository GenreRepository:
+
+public async Task DeleteGenre(int Id)
+        {
+            var respose = await httpService.Delete($"{url}/{Id}");
+            if (!respose.Success)
+            {
+                throw new ApplicationException(await respose.GetBody());
+            }
+        }
+3) BlazorMovies.Client.Helpers -> IHttpService: 
+
+    Task<HttpResponseWrapper<object>> Delete(string url);
+
+4) BlazorMovies.Client.Helpers -> HttpService:
+    
+     public async Task<HttpResponseWrapper<object>> Delete(string url)
+        {
+            var responseHTTP = await httpClient.DeleteAsync(url);
+            return new HttpResponseWrapper<object>(null, responseHTTP.IsSuccessStatusCode, responseHTTP);
+        }
+5)  BlazorMovies.Client.Pages.Genres -> IndexGenres.razor
+
+изменить кнопкку "Удалить"  
+
+    <button class="btn btn-danger" @onclick ="@(()=> DeleteGenre(item.Id))">Удалить</button>
+    
+     private async Task DeleteGenre(int Id)
+        {
+            await genreRepository.DeleteGenre(Id);
+            Genres = await genreRepository.GetGenres();
+        }
+
+6) BlazorMovies.Server.Controllers -> GenresController
+
+    [HttpDelete("{id}")]
+        public async Task<ActionResult>Delete(int Id)
+        {
+            var genre = await Dbcontext.Genres.FirstOrDefaultAsync(x => x.Id == Id);
+            if(genre == null)
+            {
+                return NotFound();
+            }
+
+            Dbcontext.Remove(genre);
+            await Dbcontext.SaveChangesAsync();
+            return NoContent();
+        }
+
+

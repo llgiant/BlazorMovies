@@ -1,0 +1,58 @@
+﻿1) Создать контроллер PeopleControllers в папке BlazorMovies.Server.Controllers
+2) Унаследовать PeopleControllers от интерфейса ControllerBase
+3) Добавить атрибуты класса: [ApiController] [Route("api/[controller]")] 
+        
+        private readonly ApplicationDbContext context;
+        public PeopleController(ApplicationDbContext context)
+        {
+            this.context = context;
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<int>> Post(Person person)
+        {
+            context.Add(person);
+            await context.SaveChangesAsync();
+            return person.Id;
+        }
+
+4) Создать interface IPersonRepository с методом Task CreatePerson(Person person);
+5) Создать public class PersonRepository и реализовать интерфейс IPersonRepository   
+       
+       private readonly IHttpService httpService;
+        //endpoint in witch genresController located
+        private string url = "api/people";
+
+        public PersonRepository(IHttpService httpService)
+        {
+            this.httpService = httpService;
+        }
+        public async Task CreatePerson(Person person)
+        {
+            var respose = await httpService.Post(url, person);
+            if (!respose.Success)
+            {
+                throw new ApplicationException(await respose.GetBody());
+            }
+        }
+
+6) добавить сервис BlazorMovies.Client.Programm  - builder.Services.AddScoped<IPersonRepository, PersonRepository>();
+7) в класс CreatePerson добавить:
+                                 @inject IPersonRepository personRepository 
+                                 @inject NavigationManager navigationManager
+
+    Person Person = new Person();
+    private async Task Create()
+    {
+        try
+        {
+            await personRepository.CreatePerson(Person);
+            navigationManager.NavigateTo("people");
+        }
+        catch (Exception ex)
+        {
+            //.....
+            Console.WriteLine(ex.Message);
+        }
+    }
+

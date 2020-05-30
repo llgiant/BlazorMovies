@@ -1,0 +1,88 @@
+﻿Инструкция как прочитать жанры в локальной базе данных
+1)В BlazorMovies.Client.Helpers в public interface IHttpService:
+        Task<HttpResponseWrapper<T>> Get<T>(string url);
+        
+2)В BlazorMovies.Client.Helpers в HttpService:
+        public async Task<HttpResponseWrapper<T>> Get<T>(string url)
+        {
+            var responseHTTP = await httpClient.GetAsync(url);
+            if (responseHTTP.IsSuccessStatusCode)
+            {
+                var response = await Deserialize<T>(responseHTTP, defaultJsonSerializerOptions);
+                return new HttpResponseWrapper<T>(response, true, responseHTTP);
+            }
+            else
+            {
+                return new HttpResponseWrapper<T>(default, false, responseHTTP);
+            }
+        }
+3)в BlazorMovies.Client.Repository в IGenreRepository:
+
+                        Task<List<Genre>> GetGenres()
+
+4)в BlazorMovies.Client.Repository в GenreRepository:
+
+public async Task<List<Genre>> GetGenres()
+        {
+            var response = await httpService.Get<List<Genre>>(url);
+            if (!response.Success)
+            {
+                throw new ApplicationException(await response.GetBody());
+            }
+            return response.Response;
+        }
+4) в GenericList.razor
+
+[Parameter] public RenderFragment<TItem> ElementTemplate { get; set; }
+
+5)в IndexGenres.razor
+
+@inject IGenreRepository genreRepository
+
+<GenericList List="Genres">
+    <WholeListTemplate>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Name</th> 
+                </tr>
+            </thead>
+            <tbody>
+                @foreach(var item in Genres)
+                {
+                    <tr>
+                        <td>
+                            <a class="btn btn-success">Изменить</a>
+                            <button class="btn btn-danger">Удалить</button>
+                        </td>
+                        <td>@item.Name</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </WholeListTemplate>
+</GenericList>
+
+@code {
+    List<Genre> Genres;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Genres = await genreRepository.GetGenres();
+        }
+        catch(Exception ex)
+        {
+
+        }
+    }
+}
+
+6)в BlazorMovies.Server.Controllers - GenresController
+        [HttpGet]
+        public async Task<ActionResult<List<Genre>>> Get()
+        {
+            return await context.Genres.ToListAsync();
+        }

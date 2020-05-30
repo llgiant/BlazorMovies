@@ -1,0 +1,68 @@
+﻿Инструкция как хранить изображения проекта на сервере в паке wwwroot и как использовать эти изображения
+1)Создать в Server паку wwwroot
+2)Создать папку Helpers куда поместить интерфейс IFileService и создать 3 метода:
+		Task<string> EditFile(byte[] content, string extension, string containerName, string fileRoute);
+        Task DeleteFile(string fileRoute, string containerName);
+        Task<string> SaveFile(byte[] content, string extension, string containerName);
+3)Создать класс InAppStorageService и реализовать интерфейс IFileStorageService
+ private readonly IWebHostEnvironment _webHostEnvironment;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        public InAppStorageService(IWebHostEnvironment webHostEnvironment, IHttpContextAccessor httpContextAccessor)
+        {
+            _webHostEnvironment = webHostEnvironment;
+            _httpContextAccessor = httpContextAccessor;
+        }
+        public Task DeleteFile(string fileRoute, string containerName)
+        {
+            var fileName = Path.GetFileName(fileRoute);
+            var fileDirectory = Path.Combine(_webHostEnvironment.WebRootPath, containerName, fileName);
+
+            if (File.Exists(fileDirectory))
+            {
+                File.Delete(fileDirectory);
+            }
+
+            return Task.FromResult(0);
+        }
+
+        public async Task<string> EditFile(byte[] content, string extension, string containerName, string fileRoute)
+        {
+            if (!string.IsNullOrEmpty(fileRoute))
+            {
+                await DeleteFile(fileRoute, containerName);
+            }
+
+            return await SaveFile(content, extension, containerName);
+        }
+
+        public async Task<string> SaveFile(byte[] content, string extension, string containerName)
+        {
+            var fileName = $"{Guid.NewGuid()}.{extension}";
+            var folder = Path.Combine(_webHostEnvironment.WebRootPath, containerName);
+
+            if (!Directory.Exists(folder))
+            {
+                Directory.CreateDirectory(folder);
+            }
+
+            var savingPath = Path.Combine(folder, containerName);
+            await File.WriteAllBytesAsync(savingPath, content);
+
+            var currentUrl =
+                $"{_httpContextAccessor.HttpContext.Request.Scheme}://{_httpContextAccessor.HttpContext.Request.Host}";
+            var pathForDataBase = Path.Combine(currentUrl, containerName, fileName);
+            return pathForDataBase;
+        }
+4) Подключить сервисы в Startup'e :      services.AddScoped<IFileStorageService, InAppStorageService>();
+                                         services.AddHttpContextAccessor();
+
+5) В классе PeopleController в конструктор добавить инициализацию IFileStorageService fileStorageService и переменную private readonly IFileStorageService fileStorageService;
+6) В классе PeopleController в метод Post добавлено:
+	          if (!string.IsNullOrWhiteSpace(person.Picture))
+            {
+                var personPicture = Convert.FromBase64String(person.Picture);
+                person.Picture = await fileStorageService.SaveFile(personPicture, "jpg", "people");
+            }
+
+
+

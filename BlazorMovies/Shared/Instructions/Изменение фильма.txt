@@ -1,0 +1,145 @@
+﻿Инструкция изменения фильма
+1) в IndividualMovie.razor добавить
+
+<a class="btn btn-success" >Изменить</a> ===>>>> <a class="btn btn-info" href="/movies/edit/@Movie.Id">Изменить</a>
+
+ 2) в EditMovie.razor в EditMovie нужно добавить SelectedActors (выбранных актеров) фильма, для этого нужно добавить в
+ BlazorMovies.Server.Controllers в MoviesController новый endpoint, который будет получать всю информацию, и будет использовать
+ внутренний endpoint в MoviesController [HttpGet("{id}")] Get(int id):
+    
+     создать класс public class MovieUpdateDTO в BlazorMovies.Shared.DTOs 
+
+          public class MovieUpdateDTO
+    {
+        public Movie Movie { get; set; }
+        public List<Person> Actors { get; set; }
+        public List<Genre> SelectedGenres { get; set; }
+        public List<Genre> NotSelectedGenres { get; set; }
+    }
+    
+
+  создаю новый endpoint:
+
+  [HttpGet("update/{id}")]
+        public async Task<ActionResult<MovieUpdateDTO>> PutGet(int id)
+        {
+            var movieActionResult = await Get(id);
+            if(movieActionResult.Result is NotFoundResult) { return NotFound(); }
+
+            var movieDetailDTO = movieActionResult.Value;
+            var selectGenresIds = movieDetailDTO.Genres.Select(x => x.Id).ToList();
+            var notSelectedGenres = await Dbcontext.Genres.Where(x => !selectGenresIds.Contains(x.Id)).ToListAsync();
+
+            var model = new MovieUpdateDTO();
+            model.Movie = movieDetailDTO.Movie;
+            model.SelectedGenres = movieDetailDTO.Genres;
+            model.NotSelectedGenres = notSelectedGenres;
+            model.Actors = movieDetailDTO.Actors;
+            return model;
+        }
+3) в BlazorMovies.Client.Repository в MoviesRepository
+
+     public async Task<MovieUpdateDTO> GetMovieForUpdate (int id)
+        {
+            return await httpService.GetHelper<MovieUpdateDTO>($"{url}/update/{id}");
+        }
+
+       3.1) Извлеч метод GetMovieForUpdate в интерфейс IMoviesRepository
+
+       3.2) public async Task UpdateMovie(Movie movie)
+                {
+                    var respose = await httpService.Put(url, movie);
+                    if (!respose.Success)
+                    {
+                        throw new ApplicationException(await respose.GetBody());
+                    }
+             }
+       3.3) Извлеч метод UpdateMovie в интерфейс IMoviesRepository
+ 
+4) в BlazorMovies.Server.Controllers в MoviesController:
+    
+    private readonly IMapper mapper;
+        private string containerName = "movies";
+
+        public MoviesController(ApplicationDbContext context, IFileStorageService fileStorageService, IMapper mapper)
+        {
+            Dbcontext = context;
+            this.fileStorageService = fileStorageService;
+            this.mapper = mapper;
+        }
+
+         [HttpPut]
+        public async Task<ActionResult> Put(Movie movie)
+        {
+            var movieDB = await Dbcontext.Movies.FirstOrDefaultAsync(x => x.Id == movie.Id);
+
+            if (movieDB == null) { return NotFound(); }
+
+            movieDB = mapper.Map(movie, movieDB);
+
+            if (!string.IsNullOrWhiteSpace(movie.Poster))//null means that person does't want to update the picture of the person
+            {
+                var personPicture = Convert.FromBase64String(movie.Poster);
+                movieDB.Poster = await fileStorageService.EditFile(personPicture, "jpeg", containerName, movieDB.Poster);
+            }
+
+            await Dbcontext.Database.ExecuteSqlInterpolatedAsync($"delete from MoviesActors where MovieId = {movie.Id}; delete from MoviesGenres where MovieId = {movie.Id}");
+
+            if (movie.MoviesActors != null)
+            {
+                for (int i = 0; i < movie.MoviesActors.Count; i++)
+                {
+                    movie.MoviesActors[i].Order = i + 1;
+                }
+            }
+            movieDB.MoviesActors = movie.MoviesActors;
+            movieDB.MoviesGenres = movie.MoviesGenres;
+
+            await Dbcontext.SaveChangesAsync();
+            return NoContent();
+        }
+
+5)в BlazorMovies.Server.Helpers в AutomapperProfiles:
+
+ CreateMap<Movie, Movie>()
+                .ForMember(x => x.Poster, option => option.Ignore());
+
+в EditMovie.razor
+
+@page "/movies/edit/{MovieId:int}"
+@inject IMoviesRepository moviesRepository
+
+<h3>Изменение фильма</h3>
+
+@if (Movie != null)
+{
+    <MovieForm Movie="Movie" OnValidSubmit="Edit" NotSelectedGenres="NotSelectedGenres"
+               SelectedGenres="SelectedGenres"
+               SelectedActors="SelectedActors" />
+}
+
+
+@code {
+    [Parameter] public int MovieId { get; set; }
+    private Movie Movie;
+    private List<Genre> NotSelectedGenres;
+    private List<Genre> SelectedGenres;
+    private List<Person> SelectedActors;
+
+
+    protected async override Task OnInitializedAsync()
+    {
+        var model = await moviesRepository.GetMovieForUpdate(MovieId);
+        Movie = model.Movie;
+        SelectedActors = model.Actors;
+        SelectedGenres = model.SelectedGenres;
+        NotSelectedGenres = model.NotSelectedGenres;
+    }
+
+    private void Edit()
+    {
+        Console.WriteLine("Editing Movie");
+    }
+}
+        
+ 

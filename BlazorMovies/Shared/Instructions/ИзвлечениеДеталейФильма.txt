@@ -1,0 +1,149 @@
+﻿Инструкция как при нажатии на фильм в новом окне отображается детальная информация
+1)  BlazorMovies.Client.Pages.Movies в DetailsMovie.razor:
+
+@inject IMoviesRepository moviesRepository
+
+1)Создать класс в BlazorMovies.Shared.DTOs: (DTO - Data transferring Object) 
+	
+    public class DetailsMovieDTO
+    {
+        public Movie Movie { get; set; }
+        public List<Genre> Genres { get; set; }
+        public List<Person> Actors { get; set; }
+    }
+
+
+2) в BlazorMovies.Server.Controllers:
+
+[HttpGet("{id}")]
+        public async Task<ActionResult<DetailsMovieDTO>> Get(int id)
+        {
+            var movie = await Dbcontext.Movies.Where(x => x.Id == id)
+                .Include(x => x.MoviesGenres).ThenInclude(x => x.Genre)
+                .Include(x => x.MoviesActors).ThenInclude(x => x.Person)
+                .FirstOrDefaultAsync();
+            if (movie == null) { return NotFound(); }
+            movie.MoviesActors = movie.MoviesActors.OrderBy(x => x.Order).ToList();
+
+            var model = new DetailsMovieDTO();
+            model.Movie = movie;
+            model.Genres = movie.MoviesGenres.Select(x => x.Genre).ToList();
+            model.Actors = movie.MoviesActors.Select(x =>
+
+                new Person
+                {
+                    Name = x.Person.Name,
+                    Picture = x.Person.Picture,
+                    Character = x.Character,
+                    Id = x.PersonId
+                }
+            ).ToList();
+
+            return model;
+        }
+
+3) Configure JsonSerializor savings from newtonsoft in BlazorMovies.Server  Startup:
+
+    Nuget -> Microsoft.AspNetCore.Mvc.NewtonsoftJson
+    
+4)в BlazorMovies.Server.Startup 
+            
+                        //this will make it easier for those to serialize entities that have circular references f.e. Genre - > MoviesGenres - > Genre and so on
+            в ConfigureServices(IServiceCollection services)
+            {
+                services.AddMvc().AddNewtonsoftJson(options => options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore);
+            }
+5) BlazorMovies.Client.Repository -> MoviesRepository
+
+ public async Task<IndexPageDTO> GetIndexPageDTO()
+        {
+        
+            return await Get<IndexPageDTO>(url);
+        }
+
+        public async Task<DetailsMovieDTO> GetDetailsMovieDTO(int id)
+        {
+            return await Get<DetailsMovieDTO>($"{url}/{id}");
+        }
+
+        private async Task<T> Get<T>(string url)
+        {
+            var response = await httpService.Get<T>(url);
+            if (!response.Success)
+            {
+                throw new ApplicationException(await response.GetBody());
+            }
+            return response.Response;
+        }
+6) в Microsoft.Client._imports - 
+
+        @using BlazorMovies.Shared.DTOs
+
+7) в Microsoft.Client.Pages.Movies  DetailsMovie.razor
+
+    @page "/movie/{MovieId:int}"
+@page "/movie/{MovieId:int}/{MovieName}"
+@inject IMoviesRepository moviesRepository
+
+@if (model == null)
+{
+    <text>Загрузка...</text>
+}
+else
+{
+    <h2>@model.Movie.Title (@model.Movie.ReleaseDate.Value.ToString("yyy"))</h2>
+    @for (int i = 0; i < model.Genres.Count; i++)
+    {
+        @if (i < model.Genres.Count - 1)
+        {
+            @linkGenre(model.Genres[i])<text>, </text>
+        }
+        else
+        {
+            @linkGenre(model.Genres[i])
+        }
+
+    }
+    <text> | </text><span>@model.Movie.ReleaseDate.Value.ToString("dd MMM yyyy")</span>
+
+    <div style="display:flex">
+        <span style="display:inline-block;margin-right:5px;"><img src="@model.Movie.Poster" style="width: 225px; height:315px" alt="Alternate Text" /></span>
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/@model.Movie.Trailer" frameborder="0" allallow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    </div>
+    <div style="margin-top: 10px">
+        <h3>Описание</h3>
+        <div>
+            <RenderMarkdown MarkdownContent="@model.Movie.Summary" />
+        </div>
+    </div>
+    <div style="margin-top:10px">
+        <h3>Актеры</h3>
+        <div style="display: flex; flex-direction: column">
+            @foreach (var actor in model.Actors)
+            {
+                <div style="margin-bottom: 2px;">
+                    <img style="width:50px" src="@actor.Picture" alt="Alternate Text" />
+                    <span style="display:inline-block; width:200px;"><a href="/person/@actor.Id/@actor.Name.Replace(" ","-")">@actor.Name</a></span>
+                    <span style="display:inline-block;width:45px;">...</span>
+                    <span>@actor.Character</span>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+
+    [Parameter] public int MovieId { get; set; }
+    [Parameter] public string MovieName { get; set; }
+    private RenderFragment<Genre> linkGenre = (genre) =>@<a href="movies/search?genreId=@genre.Id">@genre.Name</a>;
+    DetailsMovieDTO model;
+
+    protected async override Task OnInitializedAsync()
+    {
+    model = await moviesRepository.GetDetailsMovieDTO(MovieId);
+    }
+}
+
+    

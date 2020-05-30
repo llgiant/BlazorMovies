@@ -1,0 +1,78 @@
+﻿Как используя фильтр по фильмам
+1) BlazorMovies.Shared.DTOs
+{
+    public class FilterMoviesDTO
+    {
+        public int Page { get; set; }
+        public int RecordsPerPage { get; set; } = 10;
+        public PaginationDTO Pagination
+        {
+            get { return new PaginationDTO() { Page = Page, RecordsPerPage = RecordsPerPage }; }
+        }
+        public string Title  { get; set; }
+        public int GenreId { get; set; }
+        public bool Intheatres { get; set; }
+        public bool UpcomingReleases { get; set; }
+    }
+}
+2)BlazorMovies.Server.Controllers --> MoviesController
+
+[HttpPost("filter")]
+        public async Task<ActionResult<List<Movie>>> Filter(FilterMoviesDTO filterMoviesDTO)
+        {
+            var moviesQueryabale = context.Movies.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(filterMoviesDTO.Title))
+            {
+                moviesQueryabale = moviesQueryabale
+                        .Where(x => x.Title.Contains(filterMoviesDTO.Title));
+            }
+
+            if (filterMoviesDTO.Intheatres)
+            {
+                moviesQueryabale = moviesQueryabale.Where(x => x.InTheaters);
+            }
+
+            if (filterMoviesDTO.UpcomingReleases)
+            {
+                var today = DateTime.Today;
+                moviesQueryabale = moviesQueryabale.Where(x => x.ReleaseDate > today);
+            }
+
+            if (filterMoviesDTO.GenreId != 0)
+            {
+                moviesQueryabale = moviesQueryabale.Where(x => x.MoviesGenres.Select(y => y.GenreId)
+             .Contains(filterMoviesDTO.GenreId));
+
+            }
+
+            await HttpContext.InsertPaginationParametersInResponse(moviesQueryabale, filterMoviesDTO.RecordsPerPage);
+            var movies = await moviesQueryabale.Paginate(filterMoviesDTO.Pagination).ToListAsync();
+            return movies;
+        }
+
+ 3)BlazorMovies.Client.Repository -> MoviesRepository
+
+  public async Task<PaginatedResponse<List<Movie>>> GetMovieFiltered(FilterMoviesDTO filterMoviesDTO)
+        {
+            var responseHTTP = await httpService.Post<FilterMoviesDTO, List<Movie>>($"{url}/filter", filterMoviesDTO);
+            var totalAmountPages = int.Parse(responseHTTP.HttpResponseMessage.Headers.GetValues("totalAmountPages").FirstOrDefault());
+            var paginatedRespponse = new PaginatedResponse<List<Movie>>()
+            {
+                Response = responseHTTP.Response,
+                TotalAmountPages = totalAmountPages
+            };
+            return paginatedRespponse;
+        }
+4) BlazorMovies.Client.Pages.movies -> MovieFilter.razor
+Заменить репозитарий  @inject IRepository repository
+
+на @inject IMoviesRepository moviesRepository
+
++@inject IGenreRepository genreRepository
+
+<EditForm >
+    <div class="form-inline">.....
+    заменитл все @bind-value на filterMoviesDTO.Title or filterMoviesDTO.GenreId
+</EditForm>
+ private FilterMoviesDTO filterMoviesDTO = new FilterMoviesDTO();

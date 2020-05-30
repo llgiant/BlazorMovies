@@ -1,0 +1,115 @@
+﻿Инструкция изменения людей
+1) Создать static class IHttpServiceExtensionMethod в BlazorMovies.Client.Helpers
+
+public static async Task<T> GetHelper<T>(this IHttpService httpService,string url)
+        {
+            var response = await httpService.Get<T>(url);
+            if (!response.Success)
+            {
+                throw new ApplicationException(await response.GetBody());
+            }
+            return response.Response;
+        }
+1.1) Удалить метод из MoviesRepository если есть и прописать return await httpService.GetHelper....
+2) в BlazorMovies.Client.Repository в PersonRepository
+
+public async Task UpdatePerson(Person person)
+        {
+            var respose = await httpService.Put(url, person);
+            if (!respose.Success)
+            {
+                throw new ApplicationException(await respose.GetBody());
+            }
+        }
+
+        //  GetPeopleById
+        public async Task<Person> GetPeopleById(int id)
+        {
+            return await httpService.GetHelper<Person>($"{url}/{id}");
+        }
+
+2.1) Добавить вышеперечисленные методы в интерфейс IPersonRepository
+
+3)в BlazorMovies.Client.Helpers в HttpService
+ 
+    public async Task<HttpResponseWrapper<object>> Put<T>(string url, T data)
+        {
+            var dataJson = JsonSerializer.Serialize(data);
+            var stringContent = new StringContent(dataJson, Encoding.UTF8, "application/json");
+            var response = await httpClient.PutAsync(url, stringContent);
+            return new HttpResponseWrapper<object>(null, response.IsSuccessStatusCode, response);
+        }
+3.1) Добавить метод put в интерфейс IHttpService
+4) в IndexPeople.razor 
+ 
+ <a class="btn btn-success" href="/genre/edit/@item.Id">Изменить</a>
+
+5) Nuget install AutoMapper.Extensions.Microsoft.DependencyInjecti to BlazorMovies.Server
+
+5.1)в BlazorMovies.Server Startup
+
+        services.AddAutoMapper(typeof(Startup));
+
+ чтобы использовать AutoMapper нужно использовать Profiles 
+ с помощью Profiles мы можем настроить отображение между типом
+с AutoMapper мы настраиваем отображение между BlazorMovies.Shared.Entities
+
+5.2)в BlazorMovies.Server.Helpers создаю класс AutomapperProfiles : Profile
+  
+   public AutomapperProfiles()
+        {
+            //we only want to update picture if the user change it on frontEnd
+            CreateMap<Person, Person>().ForMember(x => x.Picture, option => option.Ignore());
+        }
+
+6) в BlazorMovies.Server.Controllers в PeopleController
+
+//Get a specific data from db
+ 
+ в коонструкторе добавить Imapper:
+ 
+ public PeopleController(ApplicationDbContext context, IFileStorageService fileStorageService,IMapper mapper)
+        {
+            Dbcontext = context;
+            this.fileStorageService = fileStorageService;
+            this.mapper = mapper;
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Person>> Get(int id)
+        {
+            var person = await Dbcontext.People.FirstOrDefaultAsync(x => x.Id == id);
+            if (person == null) { return NotFound(); }
+            return person;
+        }
+        [HttpPut]
+        public async Task<ActionResult> Put(Person person)
+        {
+            var personDB = await Dbcontext.People.FirstOrDefaultAsync(x => x.Id == person.Id);
+
+            if (personDB == null) { return NotFound(); }
+
+            personDB = mapper.Map(person, personDB);
+
+            if (!string.IsNullOrWhiteSpace(person.Picture))//null means that person does't want to update the picture of the person
+            {
+                var personPicture = Convert.FromBase64String(person.Picture);
+                personDB.Picture = await fileStorageService.EditFile(personPicture, "jpeg", "people", personDB.Picture);
+            }
+            await Dbcontext.SaveChangesAsync();
+            return NoContent();
+        }
+7)в EditPerson.razor
+@inject IPersonRepository personRepository
+@inject NavigationManager navigationManager
+ 
+ protected override async Task OnInitializedAsync()
+    {
+        Person = await personRepository.GetPeopleById(PersonId);
+    }
+
+  private async Task Edit()
+    {
+        await personRepository.UpdatePerson(Person);
+        navigationManager.NavigateTo("people");
+    }

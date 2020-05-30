@@ -1,0 +1,96 @@
+﻿@page "/movies/search"
+@inject IMoviesRepository moviesRepository
+@inject IGenreRepository genreRepository
+
+<h3>Поиск фильма</h3>
+<EditForm Model="filterMoviesDTO">
+    <div class="form-inline">
+        <div class="form-group mb-2">
+            <label for="title" class="sr-only">Название</label>
+            <input type="text" class="form-control" placeholder="Название фильма"
+                   @bind-value="filterMoviesDTO.Title" @bind-value:event="oninput"
+                   @onkeypress="@((KeyboardEventArgs e)=>TitleKeyPress(e))" />
+
+        </div>
+        <div class="form-group mx-sm-3 mb-2">
+            <select class="form-control" @bind="filterMoviesDTO.GenreId">
+                <option value="0">
+                    --Выбирете Жанр--
+                </option>
+                @foreach (var genre in Genres)
+                {
+                    <option value="@genre.Id">@genre.Name</option>
+                }
+            </select>
+        </div>
+        <div class="form-group mx-sm-3 mb-2">
+            <input type="checkbox" class="form-check-input" id="upcomingReleases" 
+                   @bind="filterMoviesDTO.UpcomingReleases" />
+            <label class="form-check-label" for="upcomingReleases">
+                Новинки
+            </label>
+        </div>
+        <div class="form-group mx-sm-3 mb-2">
+            <input type="checkbox" class="form-check-input" id="inTheatrtes" 
+                   @bind="filterMoviesDTO.Intheatres" />
+            <label class="form-check-label" for="inTheatrtes">
+                В Кинотеатрах
+            </label>
+        </div>
+        <button type="button" class="btn btn-primary mb-2 mx-sm-3" @onclick="SearchForMovies">Поиск</button>
+        <button type="button" class="btn btn-danger mb-2" @onclick="Clear">Очистить</button>
+    </div>
+</EditForm>
+
+<MoviesList Movies="Movies"></MoviesList>
+
+@code {
+    private List<Movie> Movies;
+    private FilterMoviesDTO filterMoviesDTO = new FilterMoviesDTO();
+    string title = "";
+    string selectedGenre = "0";
+    bool upcomingReleases = false;
+    bool inTheatrtes = false;
+    private List<Genre> Genres = new List<Genre>();
+
+    protected async override Task OnInitializedAsync()
+    {
+        Genres = await genreRepository.GetGenres();
+        await LoadMovies();
+    }
+
+    private async Task LoadMovies()
+    {
+        var paginatedResponse = await moviesRepository.GetMovieFiltered(filterMoviesDTO);
+        Movies = paginatedResponse.Response;
+
+    }
+
+    private void SearchForMovies()
+    {
+        Movies = Movies.Where(x => x.Title.Contains(title)).ToList();
+        Console.WriteLine($"Название:{title}");
+        Console.WriteLine($"Жанр:{selectedGenre}");
+        Console.WriteLine($"Новинки:{upcomingReleases}");
+        Console.WriteLine($"В кинотеатрах:{inTheatrtes}");
+
+    }
+    private void Clear()
+    {
+
+        title = "";
+        selectedGenre = "";
+        upcomingReleases = false;
+        inTheatrtes = false;
+
+    }
+
+
+    private void TitleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            SearchForMovies();
+        }
+    }
+}

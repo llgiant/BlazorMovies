@@ -1,0 +1,52 @@
+﻿@typeparam TItem
+
+@if (List == null)
+{
+
+    @if (NullTemplate != null)
+    {
+        @NullTemplate
+    }
+    else
+    {
+        //Defalt Content
+        <img src="https://thumbs.gfycat.com/PotableEmbarrassedFrenchbulldog-small.gif" alt="Alternate Text" />
+    }
+}
+else if (List.Count == 0)
+{
+    @if (EmptyTemplate != null)
+    {
+        @EmptyTemplate
+    }
+    else
+    {
+        //Defalt Content
+        <text>Нет данных для отображения</text>
+    }
+}
+else
+{
+    @if (ElementTemplate != null)
+    {
+        @foreach (var element in List)
+        {
+            @ElementTemplate(element)
+        }
+    }
+    else
+    {
+        @WholeListTemplate
+    }
+}
+
+
+
+@code{
+    [Parameter] public RenderFragment NullTemplate { get; set; }
+    [Parameter] public RenderFragment EmptyTemplate { get; set; }
+    [Parameter] public RenderFragment<TItem> ElementTemplate { get; set; }
+    [Parameter] public RenderFragment WholeListTemplate { get; set; }
+    [Parameter] public List<TItem> List { get; set; }
+
+}

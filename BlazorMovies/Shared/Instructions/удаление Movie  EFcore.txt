@@ -1,0 +1,51 @@
+﻿Инструкция удалениея movie из баз данных через EntityFrameworkCore 
+1) в интерфейсе BlazorMovies.Client.Repository IMoviesRepository:
+
+    public async Task DeleteMovie(int Id);
+
+2) в BlazorMovies.Client.Repository MoviesRepository:
+	
+	public async Task DeleteMovie(int Id)
+        {
+            var respose = await httpService.Delete($"{url}/{Id}");
+            if (!respose.Success)
+            {
+                throw new ApplicationException(await respose.GetBody());
+            }
+        }
+
+3) BlazorMovies.Client.Shared -> MoviesList.razor
+
+@inject @inject IMoviesRepository moviesRepository
+    if (confirmed)
+        {
+       ---> await moviesRepository.DeleteMovie(movie.Id);<---
+            Movies.Remove(movie);
+        }    
+4) BlazorMovies.Client.Helpers -> IHttpService: 
+
+    Task<HttpResponseWrapper<object>> Delete(string url);
+
+5) BlazorMovies.Client.Helpers -> HttpService:
+    
+     public async Task<HttpResponseWrapper<object>> Delete(string url)
+        {
+            var responseHTTP = await httpClient.DeleteAsync(url);
+            return new HttpResponseWrapper<object>(null, responseHTTP.IsSuccessStatusCode, responseHTTP);
+        }
+
+6) BlazorMovies.Server.Controllers -> MoviesController
+
+    [HttpDelete("{id}")]
+         public async Task<ActionResult> Delete(int Id)
+        {
+            var movie = await Dbcontext.Movies.FirstOrDefaultAsync(x => x.Id == Id);
+            if (movie == null)
+            {
+                return NotFound();
+            }
+
+            Dbcontext.Remove(movie);
+            await Dbcontext.SaveChangesAsync();
+            return NoContent();
+        }

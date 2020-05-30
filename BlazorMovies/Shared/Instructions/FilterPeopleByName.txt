@@ -1,0 +1,39 @@
+﻿Как используя фильтр по имени получать список людей из базы данных
+1) В BlazorMovies.Server.Controllers -> PeopleController:
+
+[HttpGet("search/{searchText}")]
+        public async Task<ActionResult<List<Person>>> FilterByName(string searchText)
+        {
+            if (string.IsNullOrWhiteSpace(searchText)) { return new List<Person>(); }
+            return await Dbcontext.People.Where(x => x.Name.Contains(searchText)).Take(5).ToListAsync(); 
+        }
+       //Further work with personRepository that can invoke FilterByName method
+
+2)  В BlazorMovies.Client.Repository в IPersonRepository:
+
+ Task<List<Person>> GetPeopleByName(string name);
+
+3) В BlazorMovies.Client.Repository в PersonRepository:
+
+public async Task<List<Person>> GetPeopleByName(string name)
+        {
+            var response = await httpService.Get<List<Person>>($"{url}/search/{name}");
+            if (!response.Success)
+            {
+                throw new ApplicationException(await response.GetBody());
+            }
+            return response.Response;
+        }
+4) в BlazorMovies.Client.Pages.Movies -> MovieForm
+
+private IPersonRepository personRepository;
+
+private async Task<IEnumerable<Person>> SearchMethod(string searchText)
+        {
+            return await personRepository.GetPeopleByName(searchText);
+        }
+
+5)в MovieForm.razor 
+
+@inject IPersonRepository personRepository
+

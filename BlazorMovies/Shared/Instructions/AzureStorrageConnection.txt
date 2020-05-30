@@ -1,0 +1,22 @@
+﻿Инструкция как подключить AzureStorage где будут храниться изображения проекта и как использовать эти изображения
+1)Создать в Azure Storage account
+2) в разделе Keys скопировать в буфер Key
+3) вставить Key в appsettings:
+	    "AzureStorageConnection": "вставить сюда ключь"
+4)Установить в проект сервера WindowsAzure.Storage чеоез менеджера пакетов Nuget
+5)Создать папку Helpers куда поместить интерфейс IFileService и создать 3 метода:
+		Task<string> EditFile(byte[] content, string extension, string containerName, string fileRoute);
+        Task DeleteFile(string fileRoute, string containerName);
+        Task<string> SaveFile(byte[] content, string extension, string containerName);
+6)Создать класс AzureStorageService и реализовать интерфейс IFileStorageService
+7) Подключить сервисы в Startup'e services.AddScoped<IFileStorageService, AzureStorageService>();
+8) В классе PeopleController в конструктор добавить инициализацию IFileStorageService fileStorageService и переменную private readonly IFileStorageService fileStorageService;
+9) в метод Post добавлено:
+	          if (!string.IsNullOrWhiteSpace(person.Picture))
+            {
+                var personPicture = Convert.FromBase64String(person.Picture);
+                person.Picture = await fileStorageService.SaveFile(personPicture, "jpg", "people");
+            }
+
+
+

@@ -1,0 +1,77 @@
+﻿Инструкция обновления жанра
+1) в IndexGenre.razor добавить
+
+<a class="btn btn-success" >Изменить</a>        =>        <a class="btn btn-success" href="/genre/edit/@item.Id">Изменить</a>
+
+ 2) в BlazorMovies.Client.Helpers в HttpService
+ 
+ public async Task<HttpResponseWrapper<object>> Put<T>(string url, T data)
+        {
+            var dataJson = JsonSerializer.Serialize(data);
+            var stringContent = new StringContent(dataJson, Encoding.UTF8, "application/json");
+            var response = await httpClient.PutAsync(url, stringContent);
+            return new HttpResponseWrapper<object>(null, response.IsSuccessStatusCode, response);
+        }
+3) Добавить метод put в интерфейс IHttpService
+ 
+4) в BlazorMovies.Client.Repository в GenreRepository
+
+        public async Task UpdateGenre(Genre genre)
+                {
+                    var respose = await httpService.Put(url, genre);
+                    if (!respose.Success)
+                    {
+                        throw new ApplicationException(await respose.GetBody());
+                    }
+                }
+
+4.1) Извлеч метод UpdateGenre в интерфейс IGenreRepository
+
+5) в BlazorMovies.Server.Controllers в GenresController
+
+//Get a specific data from db
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Genre>> Get(int id)
+        {
+            var genre = await DBcontext.Genres.FirstOrDefaultAsync(x => x.Id == id);
+            if (genre == null) { return NotFound(); }
+            return genre;
+        }
+        [HttpPut]
+        public async Task<ActionResult> Put(Genre genre)
+        {
+            DBcontext.Attach(genre).State = EntityState.Modified;
+            await DBcontext.SaveChangesAsync();
+            return NoContent();
+        }
+
+6) в BlazorMovies.Client.Repository в GenreRepository
+
+  public async Task<Genre> GetGenre(int Id)
+        {
+            var response = await httpService.Get<Genre>($"{url}/{Id}");
+            if (!response.Success)
+            {
+                throw new ApplicationException(await response.GetBody());
+            }
+            return response.Response;
+        }
+7) Извлеч метод GetGenre в интерфейс IGenreRepository
+
+8) в EditGenre.razor
+
+@inject IGenreRepository genreRepository
+@inject NavigationManager navigationManager
+
+protected override async Task OnInitializedAsync()
+    {
+        genre = await genreRepository.GetGenre(GenreId);
+    }
+
+    private void Edit()
+    {
+        genreRepository.UpdateGenre(genre);
+        navigationManager.NavigateTo("genres");
+    }
+
+

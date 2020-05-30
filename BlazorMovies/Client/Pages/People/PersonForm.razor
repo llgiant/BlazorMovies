@@ -1,0 +1,53 @@
+﻿
+    <EditForm Model="Person" OnValidSubmit="OnValidSubmit">
+        <DataAnnotationsValidator />
+
+        <div class="form-group">
+            <label for="name">Имя</label>
+            <div>
+                <InputText class="form-control" @bind-Value="@Person.Name"></InputText>
+                <ValidationMessage For="@(()=>Person.Name)" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="name">Дата рождения</label>
+            <div>
+                <InputDate class="form-control" @bind-Value="@Person.DateOfBirth"></InputDate>
+                <ValidationMessage For="@(()=>Person.DateOfBirth)" />
+            </div>
+        </div>
+
+         <div class="form-group">
+            <InputImage Label="Изображение" OnSelectedImage="PictureSelected" ImageURL="@imageURL" />
+        </div>
+
+        <div class="form-group form-markdown">
+            <InputMarkdown @bind-Value="@Person.Biography" Label="Биография" For="@(()=>Person.Biography)" />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Подтвердить</button>
+
+    </EditForm>
+
+@code {
+    [Parameter] public Person Person { get; set; }
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+    string imageURL;
+    
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Person.Picture))
+        {
+            imageURL = Person.Picture;
+            //не отправлять изображение если оно не было обновлено
+            Person.Picture = null;
+        }
+    }
+    private void PictureSelected(string imageBase64)
+    {
+        Person.Picture = imageBase64;
+        imageURL = null;
+        Console.WriteLine(imageBase64);
+    }
+}
